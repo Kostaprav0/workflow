@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from app.schemas.task import TaskCreate
+from app.schemas.task import TaskCreate, TaskUpdate
 
 router = APIRouter()
 
@@ -43,5 +43,23 @@ def delete_task(task_id, int):
         if task["id"] == task_id:
             tasks.remove(task)
             return {"message": "Task deleted"}
+
+    raise HTTPException(status_code=404, detail="Task not found")
+
+@router.patch("/tasks/{task_id}")
+def update_task(task_id: int, task_update: TaskUpdate):
+    for task in tasks:
+        if task["id"] == task_id:
+
+            if task_update.title is not None:
+                task["title"] = task_update.title
+
+            if task_update.description is not None:
+                task["description"] = task_update.description
+
+            if task_update.completed is not None:
+                task["completed"] = task_update.completed
+
+            return task
 
     raise HTTPException(status_code=404, detail="Task not found")
