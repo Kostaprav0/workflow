@@ -1,65 +1,75 @@
 from fastapi import APIRouter, HTTPException
-from app.schemas.task import TaskCreate, TaskUpdate
+from app.schemas.task import TaskCreate, TaskUpdate, TaskResponse
+
+from sqlalchemy.orm import Session
+from fastapi import Depends
+
+from app.database import get_db
+from app.models.task import Task
 
 router = APIRouter()
 
-tasks = [
-    {
-        "id": 1,
-        "title": "Изучить FastAPI",
-        "description": "Разобраться с API",
-        "completed": False,
-    }
-]
 
-@router.get("/tasks")
-def get_tasks():
-    return tasks
+@router.get("/tasks", response_model=list[TaskResponse])
+def get_tasks(db: Session = Depends(get_db)):
+    return db.query(Task).all()
 
-@router.post("/tasks")
-def create_task(task: TaskCreate):
-    new_task = {
-        "id": len(tasks) + 1,
-        "title": task.title,
-        "description": task.description,
-        "completed": False,
-    }
+@router.post("/tasks", response_model=TaskResponse)
+def create_task(task: TaskCreate, db: Session = Depends(get_db)):
+    new_task = Task(
+        title=task.title,
+        description=task.description,
+        completed=False
+    )
 
-    tasks.append(new_task)
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
 
     return new_task
 
-@router.get("/tasks/{task_id}")
-def get_task(task_id: int):
-    for task in tasks:
-        if task["id"] == task_id:
-            return task
+@router.get("/tasks/{task_id}", response_model=TaskResponse)
+def get_task(task_id: int, db: Session = Depends(get_db)):
+    task = db.query(Task).filter(Task.id == task_id).first()
 
-    raise HTTPException(status_code=404, detail="Task not found")
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    return task
 
 @router.delete("/tasks/{task_id}")
-def delete_task(task_id, int):
-    for task in tasks:
-        if task["id"] == task_id:
-            tasks.remove(task)
-            return {"message": "Task deleted"}
+def delete_task(task_id: int, db: Session = Depends(get_db)):
+    task = db.query(Task).filter(Task.id == task_id).first()
 
-    raise HTTPException(status_code=404, detail="Task not found")
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
 
-@router.patch("/tasks/{task_id}")
-def update_task(task_id: int, task_update: TaskUpdate):
-    for task in tasks:
-        if task["id"] == task_id:
+    db.delete(task)
+    db.commit()
 
-            if task_update.title is not None:
-                task["title"] = task_update.title
+    return {"message": "Task deleted"}
 
-            if task_update.description is not None:
-                task["description"] = task_update.description
+@router.patch("/tasks/{task_id}", response_model=TaskResponse)
+def update_task(
+    task_id: int,
+    task_update: TaskUpdate,
+    db: Session = Depends(get_db)
+):
+    task = db.query(Task).filter(Task.id == task_id).first()
 
-            if task_update.completed is not None:
-                task["completed"] = task_update.completed
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
 
-            return task
+    if task_update.title is not None:
+        task.title = task_update.title
 
-    raise HTTPException(status_code=404, detail="Task not found")
+    if task_update.description is not None:
+        task.description = task_update.description
+
+    if task_update.completed is not None:
+        task.completed = task_update.completed
+
+    db.commit()
+    db.refresh(task)
+
+    return task
